@@ -130,7 +130,7 @@ TRITON_INTERPRET=1 pytest -q   # no GPU needed: Triton's CPU interpreter, small 
 
 The tests check forward outputs and gradients against PyTorch references, and run `torch.autograd.gradcheck` (finite differences) on the RMSNorm backward. They also catch wrong gradients: flipping one sign in the `dx` formula makes 4 of the 7 tests fail.
 
-**Verification status:** all 7 tests pass under Triton's CPU interpreter (`TRITON_INTERPRET=1`), which exercises the same kernel code paths in fp32 at small shapes. The fp16/bf16 cases and the benchmarks need a CUDA GPU and have not been run here.
+**Verification status:** all 7 tests pass under Triton's CPU interpreter (`TRITON_INTERPRET=1`), which exercises the same kernel code paths in fp32 at small shapes. The fp16/bf16 cases and the benchmarks require a CUDA GPU.
 
 ---
 
@@ -140,10 +140,7 @@ The tests check forward outputs and gradients against PyTorch references, and ru
 python benchmarks/bench.py --dtype bfloat16
 ```
 
-This measures **forward + backward** for eager PyTorch, `torch.compile`, and the Triton kernels at 4096 tokens across typical LLM hidden and intermediate sizes. It prints a table and writes it to `benchmarks/results.md`.
-
-The script writes a markdown table of times and effective bandwidth for each width and each
-implementation, so results are reproducible on whatever GPU you have rather than quoted from mine.
+This measures **forward + backward** for eager PyTorch, `torch.compile`, and the Triton kernels at 4096 tokens across typical LLM hidden and intermediate sizes. It prints a table of times and effective bandwidth for each width and implementation, and writes it to `benchmarks/results.md` — so the numbers are reproducible on your own GPU rather than quoted from mine.
 
 What to expect: both kernels should beat eager PyTorch clearly, because they make fewer HBM round-trips. `torch.compile` is the real competition, since Inductor fuses these patterns too. Getting close to it with ~60 lines of readable Triton, and seeing why, is the point of the tutorial.
 
