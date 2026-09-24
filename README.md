@@ -136,13 +136,21 @@ The tests check forward outputs and gradients against PyTorch references, and ru
 
 ## Benchmarks
 
+Requires a CUDA GPU.
+
 ```bash
 python benchmarks/bench.py --dtype bfloat16
 ```
 
-This measures **forward + backward** for eager PyTorch, `torch.compile`, and the Triton kernels at 4096 tokens across typical LLM hidden and intermediate sizes. It prints a table of times and effective bandwidth for each width and implementation, and writes it to `benchmarks/results.md` — so the numbers are reproducible on your own GPU rather than quoted from mine.
+This times the forward and backward pass of three versions of each operation:
 
-What to expect: both kernels should beat eager PyTorch clearly, because they make fewer HBM round-trips. `torch.compile` is the real competition, since Inductor fuses these patterns too. The goal is to understand why, not to beat it.
+- **plain PyTorch**, which runs each small step as a separate GPU operation
+- **`torch.compile`**, PyTorch's built-in compiler, which merges those steps automatically
+- **the Triton kernels** from this repo, which merge them by hand
+
+It uses 4,096 tokens and layer sizes typical of real LLMs, prints a table of run times and memory bandwidth (GB/s), and saves it to `benchmarks/results.md`.
+
+**What to expect:** the Triton kernels should be clearly faster than plain PyTorch, because they read and write GPU memory fewer times. `torch.compile` does the same kind of merging, so it is the fairer comparison.
 
 ---
 
