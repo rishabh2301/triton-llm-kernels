@@ -1,13 +1,13 @@
 # Triton LLM Kernels: Fused RMSNorm and SwiGLU, Step by Step
 
-A hands-on tutorial on writing **fused GPU kernels in [Triton](https://triton-lang.org/)** for two operations found in almost every modern LLM (LLaMA, Mistral, Qwen, Falcon3 and friends):
+A hands-on tutorial on writing **fused GPU kernels in [Triton](https://triton-lang.org/)** for two operations found in almost every modern LLM (LLaMA, Mistral, Qwen and others):
 
 | Kernel | What it computes | Where it sits in a transformer block |
 |---|---|---|
 | **RMSNorm** | `y = x / sqrt(mean(x²) + eps) * w` | before attention and before the MLP |
 | **SwiGLU** | `out = silu(gate) * up` | inside the MLP, between the up/gate and down projections |
 
-Both kernels come with a hand-derived **backward pass**, so they work as drop-in `torch.autograd` functions for training, not just inference.
+Both kernels include a **backward pass**, so they can be used in training.
 
 > Everything here is built from public material: the Triton docs and tutorials, and the RMSNorm ([Zhang & Sennrich, 2019](https://arxiv.org/abs/1910.07467)) and GLU-variants ([Shazeer, 2020](https://arxiv.org/abs/2002.05202)) papers.
 
@@ -97,7 +97,7 @@ dgate     = dout · up · d silu/dg
 dup       = dout · silu(g)
 ```
 
-We **recompute `σ` in the backward pass instead of saving it**. That's one extra `exp` per element, but one less full-size activation tensor to store. For long-context training, activation memory is the bottleneck, so this is the right trade.
+We **recompute `σ` in the backward pass instead of saving it**. That's one extra `exp` per element, but one less full-size activation tensor to store. For long-context training, activation memory is the bottleneck, so this is usually the better trade-off.
 
 `TritonSwiGLUMLP` wires the kernel into a standard `down(silu(gate(x)) * up(x))` MLP block.
 
@@ -128,7 +128,7 @@ pytest -q                      # on a CUDA GPU: fp32 / fp16 / bf16, LLM-sized sh
 TRITON_INTERPRET=1 pytest -q   # no GPU needed: Triton's CPU interpreter, small shapes
 ```
 
-The tests check forward outputs and gradients against PyTorch references, and run `torch.autograd.gradcheck` (finite differences) on the RMSNorm backward. They also catch wrong gradients: flipping one sign in the `dx` formula makes 4 of the 7 tests fail.
+The tests check forward outputs and gradients against PyTorch references, and run `torch.autograd.gradcheck` (finite differences) on the RMSNorm backward.
 
 **Verification status:** all 7 tests pass under Triton's CPU interpreter (`TRITON_INTERPRET=1`), which exercises the same kernel code paths in fp32 at small shapes. The fp16/bf16 cases and the benchmarks require a CUDA GPU.
 
@@ -142,7 +142,7 @@ python benchmarks/bench.py --dtype bfloat16
 
 This measures **forward + backward** for eager PyTorch, `torch.compile`, and the Triton kernels at 4096 tokens across typical LLM hidden and intermediate sizes. It prints a table of times and effective bandwidth for each width and implementation, and writes it to `benchmarks/results.md` — so the numbers are reproducible on your own GPU rather than quoted from mine.
 
-What to expect: both kernels should beat eager PyTorch clearly, because they make fewer HBM round-trips. `torch.compile` is the real competition, since Inductor fuses these patterns too. Getting close to it with ~60 lines of readable Triton, and seeing why, is the point of the tutorial.
+What to expect: both kernels should beat eager PyTorch clearly, because they make fewer HBM round-trips. `torch.compile` is the real competition, since Inductor fuses these patterns too. The goal is to understand why, not to beat it.
 
 ---
 
